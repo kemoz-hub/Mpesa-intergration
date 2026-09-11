@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>M-PESA Payment</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="container">
+    <section class="card">
+      <div class="logo">M-PESA</div>
+
+      <h1>Make a Payment</h1>
+      <p class="subtitle">Enter your M-PESA number and amount.</p>
+
+      <form id="paymentForm" novalidate>
+        <label for="phone">M-PESA Number</label>
+        <input
+          id="phone"
+          type="tel"
+          inputmode="numeric"
+          autocomplete="tel"
+          placeholder="0712345678"
+          maxlength="13"
+          required
+        >
+
+        <label for="amount">Amount (KES)</label>
+        <input
+          id="amount"
+          type="number"
+          inputmode="numeric"
+          min="1"
+          step="1"
+          placeholder="100"
+          required
+        >
+
+        <button id="payButton" type="submit">Pay with M-PESA</button>
+      </form>
+
+      <div id="message" class="message" role="status" aria-live="polite"></div>
+
+      <p class="security">
+        Your M-PESA PIN is entered only on the M-PESA prompt. Never enter your PIN on this website.
+      </p>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
