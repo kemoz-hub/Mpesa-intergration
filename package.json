@@ -1,16 +1,13 @@
 {
   "name": "mpesa-payment-site",
   "version": "1.0.0",
-  "private": true,
-  "description": "Simple M-PESA STK Push payment website using Node.js and Express",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node server.js"
   },
   "dependencies": {
-    "axios": "^1.8.4",
-    "dotenv": "^16.5.0",
-    "express": "^5.1.0"
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
   }
 }
