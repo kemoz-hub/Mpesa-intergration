@@ -5,190 +5,316 @@ const axios = require("axios");
 const path = require("path");
 
 const app = express();
-const PORT = Number(process.env.PORT || 3000);
+const PORT = process.env.PORT || 3000;
 
+// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const MPESA_BASE_URL =
-  process.env.MPESA_ENV === "production"
-    ? "https://api.safaricom.co.ke"
-    : "https://sandbox.safaricom.co.ke";
+// Static frontend
+const publicPath = path.join(__dirname, "public");
+
+console.log("Application directory:", __dirname);
+console.log("Public directory:", publicPath);
+
+app.use(express.static(publicPath));
+
+// Explicit homepage
+app.get("/", (req, res) => {
+    res.sendFile(path.join(publicPath, "index.html"));
+});
+
+
+// -----------------------------
+// PHONE NUMBER
+// -----------------------------
 
 function normalizePhone(phone) {
-  const value = String(phone || "").replace(/\s+/g, "");
 
-  if (/^07\d{8}$/.test(value) || /^01\d{8}$/.test(value)) {
-    return "254" + value.slice(1);
-  }
+    const value = String(phone || "").replace(/\s+/g, "");
 
-  if (/^\+254[17]\d{8}$/.test(value)) {
-    return value.slice(1);
-  }
+    if (/^07\d{8}$/.test(value)) {
+        return "254" + value.substring(1);
+    }
 
-  if (/^254[17]\d{8}$/.test(value)) {
-    return value;
-  }
+    if (/^01\d{8}$/.test(value)) {
+        return "254" + value.substring(1);
+    }
 
-  throw new Error("Invalid Kenyan M-PESA phone number.");
+    if (/^\+254[17]\d{8}$/.test(value)) {
+        return value.substring(1);
+    }
+
+    if (/^254[17]\d{8}$/.test(value)) {
+        return value;
+    }
+
+    throw new Error("Invalid Kenyan M-PESA phone number.");
 }
 
-function timestamp() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
 
-  return (
-    d.getFullYear() +
-    pad(d.getMonth() + 1) +
-    pad(d.getDate()) +
-    pad(d.getHours()) +
-    pad(d.getMinutes()) +
-    pad(d.getSeconds())
-  );
+// -----------------------------
+// TIMESTAMP
+// -----------------------------
+
+function getTimestamp() {
+
+    const now = new Date();
+
+    const pad = (number) =>
+        String(number).padStart(2, "0");
+
+    return (
+        now.getFullYear() +
+        pad(now.getMonth() + 1) +
+        pad(now.getDate()) +
+        pad(now.getHours()) +
+        pad(now.getMinutes()) +
+        pad(now.getSeconds())
+    );
 }
+
+
+// -----------------------------
+// ACCESS TOKEN
+// -----------------------------
 
 async function getAccessToken() {
-  if (!process.env.MPESA_CONSUMER_KEY || !process.env.MPESA_CONSUMER_SECRET) {
-    throw new Error("Daraja Consumer Key/Secret are not configured.");
-  }
 
-  const credentials = Buffer.from(
-    `${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`
-  ).toString("base64");
+    const credentials = Buffer
+        .from(
+            `${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`
+        )
+        .toString("base64");
 
-  const response = await axios.get(
-    `${MPESA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
-    {
-      headers: {
-        Authorization: `Basic ${credentials}`
-      },
-      timeout: 15000
-    }
-  );
+    const baseURL =
+        process.env.MPESA_ENV === "production"
+            ? "https://api.safaricom.co.ke"
+            : "https://sandbox.safaricom.co.ke";
 
-  return response.data.access_token;
-}
-
-app.post("/api/mpesa/stkpush", async (req, res) => {
-  try {
-    const { phone, amount } = req.body;
-
-    if (!phone || amount === undefined || amount === null || amount === "") {
-      return res.status(400).json({
-        success: false,
-        message: "M-PESA number and amount are required."
-      });
-    }
-
-    const numericAmount = Number(amount);
-
-    if (!Number.isInteger(numericAmount) || numericAmount < 1) {
-      return res.status(400).json({
-        success: false,
-        message: "Amount must be a whole number greater than zero."
-      });
-    }
-
-    let formattedPhone;
-    try {
-      formattedPhone = normalizePhone(phone);
-    } catch (err) {
-      return res.status(400).json({
-        success: false,
-        message: err.message
-      });
-    }
-
-    if (!process.env.MPESA_SHORTCODE || !process.env.MPESA_PASSKEY) {
-      return res.status(503).json({
-        success: false,
-        message:
-          "STK Push is not configured yet. Add MPESA_SHORTCODE and MPESA_PASSKEY to the server .env file."
-      });
-    }
-
-    if (!process.env.CALLBACK_URL) {
-      return res.status(503).json({
-        success: false,
-        message: "CALLBACK_URL is not configured."
-      });
-    }
-
-    const accessToken = await getAccessToken();
-    const time = timestamp();
-
-    const password = Buffer.from(
-      `${process.env.MPESA_SHORTCODE}${process.env.MPESA_PASSKEY}${time}`
-    ).toString("base64");
-
-    const payload = {
-      BusinessShortCode: process.env.MPESA_SHORTCODE,
-      Password: password,
-      Timestamp: time,
-      TransactionType: "CustomerPayBillOnline",
-      Amount: numericAmount,
-      PartyA: formattedPhone,
-      PartyB: process.env.MPESA_SHORTCODE,
-      PhoneNumber: formattedPhone,
-      CallBackURL: process.env.CALLBACK_URL,
-      AccountReference: "WEBPAY",
-      TransactionDesc: "Website payment"
-    };
-
-    const response = await axios.post(
-      `${MPESA_BASE_URL}/mpesa/stkpush/v1/processrequest`,
-      payload,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json"
-        },
-        timeout: 20000
-      }
+    const response = await axios.get(
+        `${baseURL}/oauth/v1/generate?grant_type=client_credentials`,
+        {
+            headers: {
+                Authorization: `Basic ${credentials}`
+            }
+        }
     );
 
-    console.log("STK Push response:", response.data);
+    return response.data.access_token;
+}
 
-    return res.json({
-      success: true,
-      message:
-        "STK Push sent. Check the M-PESA phone and enter the PIN.",
-      data: response.data
-    });
-  } catch (error) {
-    const details = error.response?.data || error.message;
-    console.error("M-PESA error:", details);
 
-    return res.status(500).json({
-      success: false,
-      message: "Unable to initiate the M-PESA payment.",
-      details
-    });
-  }
+// -----------------------------
+// STK PUSH
+// -----------------------------
+
+app.post("/api/mpesa/stkpush", async (req, res) => {
+
+    try {
+
+        const { phone, amount } = req.body;
+
+        if (!phone || !amount) {
+
+            return res.status(400).json({
+                success: false,
+                message: "M-PESA number and amount are required."
+            });
+        }
+
+        if (
+            !process.env.MPESA_SHORTCODE ||
+            !process.env.MPESA_PASSKEY
+        ) {
+
+            return res.status(503).json({
+                success: false,
+                message:
+                    "M-PESA Short Code and Passkey have not been configured."
+            });
+        }
+
+        const formattedPhone =
+            normalizePhone(phone);
+
+        const numericAmount =
+            Number(amount);
+
+        if (
+            !Number.isInteger(numericAmount) ||
+            numericAmount < 1
+        ) {
+
+            return res.status(400).json({
+                success: false,
+                message: "Invalid payment amount."
+            });
+        }
+
+        const baseURL =
+            process.env.MPESA_ENV === "production"
+                ? "https://api.safaricom.co.ke"
+                : "https://sandbox.safaricom.co.ke";
+
+        const token =
+            await getAccessToken();
+
+        const timestamp =
+            getTimestamp();
+
+        const password =
+            Buffer
+                .from(
+                    `${process.env.MPESA_SHORTCODE}${process.env.MPESA_PASSKEY}${timestamp}`
+                )
+                .toString("base64");
+
+        const requestData = {
+
+            BusinessShortCode:
+                process.env.MPESA_SHORTCODE,
+
+            Password:
+                password,
+
+            Timestamp:
+                timestamp,
+
+            TransactionType:
+                "CustomerPayBillOnline",
+
+            Amount:
+                numericAmount,
+
+            PartyA:
+                formattedPhone,
+
+            PartyB:
+                process.env.MPESA_SHORTCODE,
+
+            PhoneNumber:
+                formattedPhone,
+
+            CallBackURL:
+                process.env.CALLBACK_URL,
+
+            AccountReference:
+                "WEBPAY",
+
+            TransactionDesc:
+                "Website payment"
+        };
+
+        const response =
+            await axios.post(
+                `${baseURL}/mpesa/stkpush/v1/processrequest`,
+                requestData,
+                {
+                    headers: {
+                        Authorization:
+                            `Bearer ${token}`,
+
+                        "Content-Type":
+                            "application/json"
+                    }
+                }
+            );
+
+        console.log(
+            "STK PUSH:",
+            response.data
+        );
+
+        res.json({
+            success: true,
+            message:
+                "STK Push sent. Check your phone.",
+            data:
+                response.data
+        });
+
+    } catch (error) {
+
+        console.error(
+            "M-PESA ERROR:",
+            error.response?.data ||
+            error.message
+        );
+
+        res.status(500).json({
+            success: false,
+            message:
+                "Unable to initiate M-PESA payment.",
+            error:
+                error.response?.data ||
+                error.message
+        });
+    }
 });
 
-app.post("/api/mpesa/callback", (req, res) => {
-  console.log("M-PESA CALLBACK:");
-  console.log(JSON.stringify(req.body, null, 2));
 
-  // Important:
-  // A production application should parse ResultCode/CallbackMetadata,
-  // store the transaction, and verify the order/payment before marking it paid.
+// -----------------------------
+// M-PESA CALLBACK
+// -----------------------------
 
-  res.json({
-    ResultCode: 0,
-    ResultDesc: "Accepted"
-  });
-});
+app.post(
+    "/api/mpesa/callback",
+    (req, res) => {
 
-app.get("/api/health", (_req, res) => {
-  res.json({
-    ok: true,
-    environment: process.env.MPESA_ENV || "sandbox"
-  });
-});
+        console.log(
+            "M-PESA CALLBACK"
+        );
 
-app.listen(PORT, () => {
-  console.log(`M-PESA website running on http://localhost:${PORT}`);
-  console.log(`Daraja environment: ${process.env.MPESA_ENV || "sandbox"}`);
-});
+        console.log(
+            JSON.stringify(
+                req.body,
+                null,
+                2
+            )
+        );
+
+        res.json({
+            ResultCode: 0,
+            ResultDesc: "Accepted"
+        });
+    }
+);
+
+
+// -----------------------------
+// HEALTH CHECK
+// -----------------------------
+
+app.get(
+    "/api/health",
+    (req, res) => {
+
+        res.json({
+            status: "online",
+            mpesa:
+                process.env.MPESA_ENV ||
+                "sandbox"
+        });
+    }
+);
+
+
+// -----------------------------
+// START
+// -----------------------------
+
+app.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+
+        console.log(
+            `Server running on port ${PORT}`
+        );
+
+        console.log(
+            `Public directory: ${publicPath}`
+        );
+    }
+);
