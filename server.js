@@ -100,13 +100,6 @@ app.post("/api/mpesa/stkpush", async (req, res) => {
       });
     }
 
-    if (!process.env.MPESA_SHORTCODE || !process.env.MPESA_PASSKEY) {
-      return res.status(503).json({
-        success: false,
-        message:
-          "STK Push is not configured yet. Add MPESA_SHORTCODE and MPESA_PASSKEY to the server .env file."
-      });
-    }
 
     if (!process.env.CALLBACK_URL) {
       return res.status(503).json({
