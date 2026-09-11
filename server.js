@@ -100,14 +100,6 @@ app.post("/api/mpesa/stkpush", async (req, res) => {
       });
     }
 
-
-    if (!process.env.CALLBACK_URL) {
-      return res.status(503).json({
-        success: false,
-        message: "CALLBACK_URL is not configured."
-      });
-    }
-
     const accessToken = await getAccessToken();
     const time = timestamp();
 
